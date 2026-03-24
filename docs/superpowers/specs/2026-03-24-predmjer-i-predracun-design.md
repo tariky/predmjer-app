@@ -41,6 +41,7 @@ Single Bun process serving both API and frontend.
 | phone | TEXT | |
 | email | TEXT | |
 | logo_url | TEXT nullable | path to uploaded logo |
+| subscription_expires_at | TEXT nullable | ISO 8601, null = no active subscription |
 | created_at | TEXT | ISO 8601 |
 
 ### item_groups
@@ -98,6 +99,14 @@ Single Bun process serving both API and frontend.
 | unit_price | REAL | price per unit |
 | sort_order | INTEGER | display order within group |
 
+### sessions
+| Column | Type | Notes |
+|--------|------|-------|
+| id | TEXT PK | session token |
+| user_id | INTEGER FK | references users |
+| expires_at | TEXT | ISO 8601 expiry |
+| created_at | TEXT | ISO 8601 |
+
 ## API Routes
 
 ### Auth
@@ -110,6 +119,7 @@ Single Bun process serving both API and frontend.
 - `POST /api/admin/companies` - create company
 - `PUT /api/admin/companies/:id` - update company
 - `DELETE /api/admin/companies/:id` - delete company
+- `POST /api/admin/companies/:id/logo` - upload company logo
 - `GET /api/admin/users` - list all users
 - `POST /api/admin/users` - create user (assign to company)
 - `PUT /api/admin/users/:id` - update user
@@ -129,10 +139,20 @@ Single Bun process serving both API and frontend.
 - `GET /api/estimates` - all estimates for current user's company
 - `POST /api/estimates` - create estimate
 - `GET /api/estimates/:id` - full estimate with groups and items
-- `PUT /api/estimates/:id` - update estimate (only if status = draft)
+- `PUT /api/estimates/:id` - update estimate meta fields (only if status = draft)
 - `DELETE /api/estimates/:id` - delete estimate
-- `POST /api/estimates/:id/duplicate` - duplicate estimate
+- `POST /api/estimates/:id/duplicate` - duplicate estimate with all groups and items
 - `PUT /api/estimates/:id/status` - change status (draft/finished)
+
+### Estimate Groups
+- `POST /api/estimates/:id/groups` - add group to estimate
+- `PUT /api/estimate-groups/:id` - update group (name, sort_order)
+- `DELETE /api/estimate-groups/:id` - delete group and its items
+
+### Estimate Items
+- `POST /api/estimate-groups/:id/items` - add item to group
+- `PUT /api/estimate-items/:id` - update item
+- `DELETE /api/estimate-items/:id` - delete item
 
 ### Export
 - `GET /api/estimates/:id/export/pdf` - generate A4 PDF
@@ -143,9 +163,23 @@ Single Bun process serving both API and frontend.
 - All API routes require authentication (except login)
 - Admin routes require `role = super_admin`
 - Estimate routes are scoped to `company_id` of current user
+- All library items/groups are visible (readable) to all authenticated users
 - Library item/group edit/delete restricted to `created_by = current user`
-- System library items/groups (`created_by = null`) are read-only
+- System library items/groups (`created_by = null`) are read-only for all users
 - Finished estimates are read-only (must change status back to draft to edit)
+- If company's `subscription_expires_at` is in the past, all routes (except login and /api/auth/me) return 403 with subscription expired message
+- Super admin is never affected by subscription expiry
+
+## Subscription
+
+- Super admin sets `subscription_expires_at` date for each company in the admin panel
+- Payment is handled externally via bank transfer — no in-app payment processing
+- When subscription expires:
+  - Users can still log in
+  - All app functionality is blocked — a fullscreen message is shown: "Vaša pretplata je istekla. Molimo izvršite uplatu kako ne biste izgubili pristup."
+  - Company contact info for payment is shown in the message
+  - Existing data is preserved, not deleted
+- Super admin extends subscription by updating the expiry date after receiving payment
 
 ## Frontend Pages
 
