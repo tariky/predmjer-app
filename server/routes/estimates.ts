@@ -163,6 +163,46 @@ export function createEstimateRoutes(db: Database) {
         return Response.json(newEstimate, { status: 201 });
       },
     },
+    "/api/estimates/:id/adjust": {
+      async POST(req: Request) {
+        const id = parseInt(req.params.id);
+        const result = getEstimateIfAuthorized(db, req, id);
+        if ("error" in result && result.error) return result.error;
+        const { estimate } = result as any;
+
+        if (estimate.status === "finished") {
+          return Response.json({ error: "Cannot edit finished estimate" }, { status: 403 });
+        }
+
+        const { field, percentage, group_id } = await req.json();
+        if (!field || !["unit_price", "quantity"].includes(field)) {
+          return Response.json({ error: "field must be 'unit_price' or 'quantity'" }, { status: 400 });
+        }
+        if (typeof percentage !== "number" || percentage === 0) {
+          return Response.json({ error: "percentage must be a non-zero number" }, { status: 400 });
+        }
+
+        const multiplier = 1 + percentage / 100;
+
+        if (group_id) {
+          const group = db.query("SELECT * FROM estimate_groups WHERE id = ? AND estimate_id = ?").get(group_id, id);
+          if (!group) return Response.json({ error: "Group not found" }, { status: 404 });
+
+          db.query(
+            `UPDATE estimate_items SET ${field} = ROUND(${field} * ?, 2)
+             WHERE estimate_group_id = ?`
+          ).run(multiplier, group_id);
+        } else {
+          db.query(
+            `UPDATE estimate_items SET ${field} = ROUND(${field} * ?, 2)
+             WHERE estimate_group_id IN (SELECT id FROM estimate_groups WHERE estimate_id = ?)`
+          ).run(multiplier, id);
+        }
+
+        db.query("UPDATE estimates SET updated_at = datetime('now') WHERE id = ?").run(id);
+        return Response.json({ ok: true });
+      },
+    },
     "/api/estimates/:id/groups": {
       async POST(req: Request) {
         const id = parseInt(req.params.id);

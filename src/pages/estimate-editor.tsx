@@ -21,7 +21,7 @@ import { UNITS } from "../lib/units";
 import { AiDescriptionButton } from "../components/ai-description-button";
 import {
   ArrowLeft, ChevronDown, ChevronRight, Plus, Trash2, Library,
-  FileDown, FileSpreadsheet, Lock, Unlock, GripVertical, Calculator,
+  FileDown, FileSpreadsheet, Lock, Unlock, GripVertical, Calculator, Percent,
 } from "lucide-react";
 import { CalculationDrawer } from "../components/calculation-drawer";
 
@@ -222,6 +222,10 @@ export function EstimateEditor({ id, onBack }: { id: number; onBack: () => void 
   const [libSearch, setLibSearch] = useState("");
   const [hideSystemItems, setHideSystemItems] = useState(false);
   const [calcDrawer, setCalcDrawer] = useState<{ itemId: number; itemName: string; unit: string; quantity: number } | null>(null);
+  const [showAdjust, setShowAdjust] = useState(false);
+  const [adjustField, setAdjustField] = useState<"unit_price" | "quantity">("unit_price");
+  const [adjustPercent, setAdjustPercent] = useState("");
+  const [adjustGroupId, setAdjustGroupId] = useState<string>("all");
 
   const sensors = useSensors(
     useSensor(PointerSensor),
@@ -259,6 +263,17 @@ export function EstimateEditor({ id, onBack }: { id: number; onBack: () => void 
   const handleStatusToggle = async () => {
     const newStatus = estimate.status === "draft" ? "finished" : "draft";
     await api.put(`/api/estimates/${id}/status`, { status: newStatus });
+    load();
+  };
+
+  const handleAdjust = async () => {
+    const pct = parseFloat(adjustPercent.replace(",", "."));
+    if (isNaN(pct) || pct === 0) return;
+    const body: any = { field: adjustField, percentage: pct };
+    if (adjustGroupId !== "all") body.group_id = parseInt(adjustGroupId);
+    await api.post(`/api/estimates/${id}/adjust`, body);
+    setShowAdjust(false);
+    setAdjustPercent("");
     load();
   };
 
@@ -427,6 +442,11 @@ export function EstimateEditor({ id, onBack }: { id: number; onBack: () => void 
           {isDraft ? <Unlock className="w-3 h-3 mr-1" /> : <Lock className="w-3 h-3 mr-1" />}
           {isDraft ? "Nacrt" : "Zavrsen"}
         </Badge>
+        {isDraft && (
+          <Button variant="outline" size="sm" onClick={() => setShowAdjust(true)}>
+            <Percent className="w-4 h-4 mr-1" /> Korekcija
+          </Button>
+        )}
         <Button variant="outline" size="sm" onClick={() => window.open(`/api/estimates/${id}/export/pdf`, "_blank")}>
           <FileDown className="w-4 h-4 mr-1" /> PDF
         </Button>
@@ -436,6 +456,19 @@ export function EstimateEditor({ id, onBack }: { id: number; onBack: () => void 
       </div>
 
       {/* Meta fields */}
+      <div className="space-y-1">
+        <Label className="text-muted-foreground text-xs">Naziv predmjera</Label>
+        {isDraft ? (
+          <Input
+            key={`est-name-${estimate.name}`}
+            defaultValue={estimate.name}
+            onBlur={(e) => handleMetaUpdate("name", e.target.value)}
+            placeholder="Naziv predmjera"
+          />
+        ) : (
+          <p className="text-sm">{estimate.name}</p>
+        )}
+      </div>
       <div className="grid grid-cols-2 gap-4">
         <div className="space-y-1">
           <Label className="text-muted-foreground text-xs">Investitor</Label>
@@ -831,6 +864,61 @@ export function EstimateEditor({ id, onBack }: { id: number; onBack: () => void 
           onApplied={load}
         />
       )}
+
+      {/* Adjust dialog */}
+      <Dialog open={showAdjust} onOpenChange={setShowAdjust}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Korekcija cijena / količina</DialogTitle></DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label>Šta korigirati</Label>
+              <Select value={adjustField} onValueChange={(v: "unit_price" | "quantity") => setAdjustField(v)}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="unit_price">Jedinične cijene</SelectItem>
+                  <SelectItem value="quantity">Količine</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Opseg</Label>
+              <Select value={adjustGroupId} onValueChange={setAdjustGroupId}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Cijeli predmjer</SelectItem>
+                  {estimate.groups.map((g) => (
+                    <SelectItem key={g.id} value={g.id.toString()}>{g.group_name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Postotak (%)</Label>
+              <Input
+                value={adjustPercent}
+                onChange={(e) => setAdjustPercent(e.target.value)}
+                placeholder="npr. 10 za +10%, -5 za -5%"
+                inputMode="decimal"
+                autoFocus
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") handleAdjust();
+                }}
+              />
+              <p className="text-xs text-muted-foreground">
+                Pozitivan broj povećava, negativan smanjuje
+              </p>
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setShowAdjust(false)}>Odustani</Button>
+              <Button onClick={handleAdjust}>Primijeni</Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
