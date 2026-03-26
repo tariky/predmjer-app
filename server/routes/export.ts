@@ -40,11 +40,13 @@ export function createExportRoutes(db: Database) {
 
         const pdfBuffer = generatePDF(data);
         const filename = `predmjer-${data.estimate.name.replace(/\s+/g, "-")}.pdf`;
+        const asciiFilename = filename.replace(/[^\x20-\x7E]/g, "_");
+        const encodedFilename = encodeURIComponent(filename);
 
         return new Response(pdfBuffer, {
           headers: {
             "Content-Type": "application/pdf",
-            "Content-Disposition": `attachment; filename="${filename}"`,
+            "Content-Disposition": `attachment; filename="${asciiFilename}"; filename*=UTF-8''${encodedFilename}`,
           },
         });
       },
@@ -65,11 +67,13 @@ export function createExportRoutes(db: Database) {
 
         const excelBuffer = await generateExcel(data);
         const filename = `predmjer-${data.estimate.name.replace(/\s+/g, "-")}.xlsx`;
+        const asciiFilename = filename.replace(/[^\x20-\x7E]/g, "_");
+        const encodedFilename = encodeURIComponent(filename);
 
         return new Response(excelBuffer, {
           headers: {
             "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            "Content-Disposition": `attachment; filename="${filename}"`,
+            "Content-Disposition": `attachment; filename="${asciiFilename}"; filename*=UTF-8''${encodedFilename}`,
           },
         });
       },
