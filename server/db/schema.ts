@@ -86,6 +86,10 @@ export function createSchema(db: Database) {
 
   // Migration: add notes column if missing
   try { db.exec("ALTER TABLE estimates ADD COLUMN notes TEXT NOT NULL DEFAULT ''"); } catch {}
+  // Migration: add pdv and discount columns
+  try { db.exec("ALTER TABLE estimates ADD COLUMN pdv_enabled INTEGER NOT NULL DEFAULT 0"); } catch {}
+  try { db.exec("ALTER TABLE estimates ADD COLUMN discount_type TEXT NOT NULL DEFAULT 'none'"); } catch {}
+  try { db.exec("ALTER TABLE estimates ADD COLUMN discount_value REAL NOT NULL DEFAULT 0"); } catch {}
 
   db.exec(`
     CREATE TABLE IF NOT EXISTS estimate_groups (

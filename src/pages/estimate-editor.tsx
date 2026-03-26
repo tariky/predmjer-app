@@ -24,6 +24,7 @@ import {
   FileDown, FileSpreadsheet, Lock, Unlock, GripVertical, Calculator, Percent,
 } from "lucide-react";
 import { CalculationDrawer } from "../components/calculation-drawer";
+import { Switch } from "../components/ui/switch";
 
 function DecimalInput({
   value,
@@ -70,6 +71,7 @@ function DecimalInput({
       onChange={handleChange}
       onBlur={handleBlur}
       onKeyDown={handleKeyDown}
+      onFocus={(e) => e.target.select()}
       inputMode="decimal"
     />
   );
@@ -112,6 +114,9 @@ type Estimate = {
   notes: string;
   status: "draft" | "finished";
   created_by: number;
+  pdv_enabled: number;
+  discount_type: "none" | "amount" | "percentage";
+  discount_value: number;
   groups: EstimateGroup[];
 };
 
@@ -178,10 +183,12 @@ function SortableGroupRow({
 function SortableItemRow({
   item,
   isDraft,
+  index,
   children,
 }: {
   item: EstimateItem;
   isDraft: boolean;
+  index: number;
   children: React.ReactNode;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition } = useSortable({
@@ -193,7 +200,7 @@ function SortableItemRow({
   };
 
   return (
-    <div ref={setNodeRef} style={style} className="flex items-stretch hover:bg-muted/30 transition-colors">
+    <div ref={setNodeRef} style={style} className={`flex items-stretch ${index % 2 === 0 ? "bg-background" : "bg-muted"}`}>
       {isDraft && (
         <div className="flex items-center px-2 flex-shrink-0">
           <button {...attributes} {...listeners} className="cursor-grab text-muted-foreground hover:text-foreground">
@@ -255,8 +262,10 @@ export function EstimateEditor({ id, onBack }: { id: number; onBack: () => void 
     0
   );
 
-  const handleMetaUpdate = async (field: string, value: string) => {
-    await api.put(`/api/estimates/${id}`, { [field]: value });
+  const handleMetaUpdate = async (field: string, value: string | number) => {
+    const numericFields = ["pdv_enabled", "discount_value"];
+    const val = numericFields.includes(field) ? Number(value) : value;
+    await api.put(`/api/estimates/${id}`, { [field]: val });
     load();
   };
 
@@ -417,42 +426,56 @@ export function EstimateEditor({ id, onBack }: { id: number; onBack: () => void 
   });
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-6 space-y-6 max-w-5xl mx-auto w-full">
       {/* Header */}
-      <div className="flex items-center gap-4">
-        <Button variant="ghost" size="icon" onClick={onBack}>
+      <div className="flex items-center gap-3">
+        <Button variant="ghost" size="icon" onClick={onBack} className="shrink-0">
           <ArrowLeft className="w-5 h-5" />
         </Button>
-        <div className="flex-1">
-          {isDraft ? (
-            <Input
-              className="text-xl font-bold border-none bg-transparent px-0 focus-visible:ring-0"
-              defaultValue={estimate.name}
-              onBlur={(e) => handleMetaUpdate("name", e.target.value)}
-            />
-          ) : (
-            <h1 className="text-xl font-bold">{estimate.name}</h1>
-          )}
-        </div>
-        <Badge
-          variant={isDraft ? "secondary" : "default"}
-          className="cursor-pointer"
+        <div className="flex-1" />
+
+        {/* Status toggle */}
+        <button
           onClick={handleStatusToggle}
+          className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold tracking-wide uppercase transition-all ${
+            isDraft
+              ? "bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100"
+              : "bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100"
+          }`}
         >
-          {isDraft ? <Unlock className="w-3 h-3 mr-1" /> : <Lock className="w-3 h-3 mr-1" />}
-          {isDraft ? "Nacrt" : "Zavrsen"}
-        </Badge>
-        {isDraft && (
-          <Button variant="outline" size="sm" onClick={() => setShowAdjust(true)}>
-            <Percent className="w-4 h-4 mr-1" /> Korekcija
-          </Button>
-        )}
-        <Button variant="outline" size="sm" onClick={() => window.open(`/api/estimates/${id}/export/pdf`, "_blank")}>
-          <FileDown className="w-4 h-4 mr-1" /> PDF
-        </Button>
-        <Button variant="outline" size="sm" onClick={() => window.open(`/api/estimates/${id}/export/excel`, "_blank")}>
-          <FileSpreadsheet className="w-4 h-4 mr-1" /> Excel
-        </Button>
+          <span className={`w-1.5 h-1.5 rounded-full ${isDraft ? "bg-amber-500" : "bg-emerald-500"}`} />
+          {isDraft ? "Nacrt" : "Završen"}
+        </button>
+
+        {/* Divider */}
+        <div className="w-px h-6 bg-border" />
+
+        {/* Actions group */}
+        <div className="flex items-center rounded-lg border border-border bg-card overflow-hidden divide-x divide-border">
+          {isDraft && (
+            <button
+              onClick={() => setShowAdjust(true)}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-foreground hover:bg-muted transition-colors"
+            >
+              <Percent className="w-3.5 h-3.5 text-muted-foreground" />
+              <span>Korekcija</span>
+            </button>
+          )}
+          <button
+            onClick={() => window.open(`/api/estimates/${id}/export/pdf`, "_blank")}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-foreground hover:bg-muted transition-colors"
+          >
+            <FileDown className="w-3.5 h-3.5 text-red-500" />
+            <span>PDF</span>
+          </button>
+          <button
+            onClick={() => window.open(`/api/estimates/${id}/export/excel`, "_blank")}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-foreground hover:bg-muted transition-colors"
+          >
+            <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" />
+            <span>Excel</span>
+          </button>
+        </div>
       </div>
 
       {/* Meta fields */}
@@ -545,8 +568,8 @@ export function EstimateEditor({ id, onBack }: { id: number; onBack: () => void 
                       disabled={!isDraft}
                     >
                       <div className="divide-y divide-border">
-                        {group.items.map((item) => (
-                          <SortableItemRow key={item.id} item={item} isDraft={isDraft}>
+                        {group.items.map((item, index) => (
+                          <SortableItemRow key={item.id} item={item} isDraft={isDraft} index={index}>
                             <div className="flex-1 p-4 space-y-3">
                               {/* Row 1: Name + Actions */}
                               <div className="flex items-start gap-3">
@@ -581,14 +604,14 @@ export function EstimateEditor({ id, onBack }: { id: number; onBack: () => void 
                               {isDraft ? (
                                 <Textarea
                                   key={`desc-${item.id}-${item.description}`}
-                                  className="text-sm text-muted-foreground min-h-[48px] resize-y"
+                                  className="text-sm text-foreground min-h-[48px] resize-y"
                                   defaultValue={item.description}
                                   onBlur={(e) => handleUpdateItem(item.id, "description", e.target.value)}
                                   placeholder="Opis stavke..."
                                 />
                               ) : (
                                 item.description && (
-                                  <p className="text-sm text-muted-foreground">{item.description}</p>
+                                  <p className="text-sm text-foreground">{item.description}</p>
                                 )
                               )}
 
@@ -766,38 +789,132 @@ export function EstimateEditor({ id, onBack }: { id: number; onBack: () => void 
       )}
 
       {/* Recapitulation */}
-      {estimate.groups.length > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Rekapitulacija</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Grupa radova</TableHead>
-                  <TableHead className="text-right">Iznos</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {estimate.groups.map((group) => {
-                  const subtotal = group.items.reduce((s, i) => s + i.quantity * i.unit_price, 0);
-                  return (
-                    <TableRow key={group.id}>
-                      <TableCell>{group.group_name}</TableCell>
-                      <TableCell className="text-right">{subtotal.toFixed(2)} KM</TableCell>
+      {estimate.groups.length > 0 && (() => {
+        const discountAmount = estimate.discount_type === "percentage"
+          ? grandTotal * estimate.discount_value / 100
+          : estimate.discount_type === "amount"
+            ? estimate.discount_value
+            : 0;
+        const afterDiscount = grandTotal - discountAmount;
+        const pdvAmount = estimate.pdv_enabled ? afterDiscount * 0.17 : 0;
+        const finalTotal = afterDiscount + pdvAmount;
+
+        return (
+          <Card>
+            <CardHeader>
+              <CardTitle>Rekapitulacija</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Grupa radova</TableHead>
+                    <TableHead className="text-right">Iznos</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {estimate.groups.map((group) => {
+                    const subtotal = group.items.reduce((s, i) => s + i.quantity * i.unit_price, 0);
+                    return (
+                      <TableRow key={group.id}>
+                        <TableCell>{group.group_name}</TableCell>
+                        <TableCell className="text-right">{subtotal.toFixed(2)} KM</TableCell>
+                      </TableRow>
+                    );
+                  })}
+                  <TableRow className="font-semibold">
+                    <TableCell>Ukupno bez popusta</TableCell>
+                    <TableCell className="text-right">{grandTotal.toFixed(2)} KM</TableCell>
+                  </TableRow>
+                  {estimate.discount_type !== "none" && discountAmount > 0 && (
+                    <TableRow className="text-destructive">
+                      <TableCell>
+                        Popust {estimate.discount_type === "percentage" ? `(${estimate.discount_value}%)` : ""}
+                      </TableCell>
+                      <TableCell className="text-right">-{discountAmount.toFixed(2)} KM</TableCell>
                     </TableRow>
-                  );
-                })}
-                <TableRow className="font-bold text-lg">
-                  <TableCell>UKUPNO</TableCell>
-                  <TableCell className="text-right text-primary">{grandTotal.toFixed(2)} KM</TableCell>
-                </TableRow>
-              </TableBody>
-            </Table>
-          </CardContent>
-        </Card>
-      )}
+                  )}
+                  {estimate.discount_type !== "none" && discountAmount > 0 && (
+                    <TableRow className="font-semibold">
+                      <TableCell>Ukupno sa popustom</TableCell>
+                      <TableCell className="text-right">{afterDiscount.toFixed(2)} KM</TableCell>
+                    </TableRow>
+                  )}
+                  {!!estimate.pdv_enabled && (
+                    <TableRow>
+                      <TableCell>PDV (17%)</TableCell>
+                      <TableCell className="text-right">{pdvAmount.toFixed(2)} KM</TableCell>
+                    </TableRow>
+                  )}
+                  <TableRow className="font-bold text-lg">
+                    <TableCell>UKUPNO</TableCell>
+                    <TableCell className="text-right text-primary">{finalTotal.toFixed(2)} KM</TableCell>
+                  </TableRow>
+                </TableBody>
+              </Table>
+
+              {/* PDV & Discount controls */}
+              {isDraft && (
+                <div className="grid grid-cols-2 gap-3 pt-3">
+                  <div
+                    className={`flex items-center justify-between rounded-lg border px-4 py-3 cursor-pointer transition-colors ${
+                      estimate.pdv_enabled
+                        ? "border-primary/40 bg-primary/5"
+                        : "border-border bg-muted/30"
+                    }`}
+                    onClick={() => handleMetaUpdate("pdv_enabled", estimate.pdv_enabled ? "0" : "1")}
+                  >
+                    <div>
+                      <div className="text-sm font-medium">PDV</div>
+                      <div className="text-xs text-muted-foreground">Porez 17%</div>
+                    </div>
+                    <Switch
+                      checked={!!estimate.pdv_enabled}
+                      onCheckedChange={(checked) => handleMetaUpdate("pdv_enabled", checked ? "1" : "0")}
+                    />
+                  </div>
+                  <div className={`rounded-lg border px-4 py-3 transition-colors ${
+                    estimate.discount_type !== "none"
+                      ? "border-primary/40 bg-primary/5"
+                      : "border-border bg-muted/30"
+                  }`}>
+                    <div className="flex items-center justify-between">
+                      <div className="text-sm font-medium">Popust</div>
+                      <Select
+                        value={estimate.discount_type}
+                        onValueChange={(v) => handleMetaUpdate("discount_type", v)}
+                      >
+                        <SelectTrigger className="h-7 w-auto gap-1 border-none bg-transparent px-2 text-xs text-muted-foreground shadow-none focus:ring-0">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="none">Bez popusta</SelectItem>
+                          <SelectItem value="percentage">Postotak (%)</SelectItem>
+                          <SelectItem value="amount">Fiksni iznos (KM)</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    {estimate.discount_type !== "none" ? (
+                      <div className="flex items-center gap-2 mt-1">
+                        <DecimalInput
+                          className="h-7 text-sm text-right flex-1 bg-background/50"
+                          value={estimate.discount_value}
+                          onSave={(val) => handleMetaUpdate("discount_value", String(val))}
+                        />
+                        <span className="text-xs text-muted-foreground w-6 text-right">
+                          {estimate.discount_type === "percentage" ? "%" : "KM"}
+                        </span>
+                      </div>
+                    ) : (
+                      <div className="text-xs text-muted-foreground mt-1">Nije aktiviran</div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        );
+      })()}
 
       {/* Library dialog */}
       <Dialog open={!!showLibrary} onOpenChange={(open) => !open && setShowLibrary(null)}>
@@ -867,25 +984,46 @@ export function EstimateEditor({ id, onBack }: { id: number; onBack: () => void 
 
       {/* Adjust dialog */}
       <Dialog open={showAdjust} onOpenChange={setShowAdjust}>
-        <DialogContent>
-          <DialogHeader><DialogTitle>Korekcija cijena / količina</DialogTitle></DialogHeader>
-          <div className="space-y-4">
+        <DialogContent className="sm:max-w-md p-0 overflow-hidden">
+          <div className="px-6 pt-6 pb-4">
+            <DialogHeader>
+              <DialogTitle className="text-base font-semibold">Korekcija</DialogTitle>
+            </DialogHeader>
+          </div>
+
+          <div className="px-6 space-y-5 pb-6">
+            {/* Field toggle — segmented control */}
             <div className="space-y-2">
-              <Label>Šta korigirati</Label>
-              <Select value={adjustField} onValueChange={(v: "unit_price" | "quantity") => setAdjustField(v)}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="unit_price">Jedinične cijene</SelectItem>
-                  <SelectItem value="quantity">Količine</SelectItem>
-                </SelectContent>
-              </Select>
+              <Label className="text-xs text-muted-foreground uppercase tracking-wider">Šta korigirati</Label>
+              <div className="grid grid-cols-2 gap-1 p-1 rounded-lg bg-muted">
+                <button
+                  className={`rounded-md px-3 py-2 text-sm font-medium transition-all ${
+                    adjustField === "unit_price"
+                      ? "bg-card text-foreground shadow-sm"
+                      : "text-muted-foreground hover:text-foreground"
+                  }`}
+                  onClick={() => setAdjustField("unit_price")}
+                >
+                  Cijene
+                </button>
+                <button
+                  className={`rounded-md px-3 py-2 text-sm font-medium transition-all ${
+                    adjustField === "quantity"
+                      ? "bg-card text-foreground shadow-sm"
+                      : "text-muted-foreground hover:text-foreground"
+                  }`}
+                  onClick={() => setAdjustField("quantity")}
+                >
+                  Količine
+                </button>
+              </div>
             </div>
+
+            {/* Scope */}
             <div className="space-y-2">
-              <Label>Opseg</Label>
+              <Label className="text-xs text-muted-foreground uppercase tracking-wider">Opseg</Label>
               <Select value={adjustGroupId} onValueChange={setAdjustGroupId}>
-                <SelectTrigger>
+                <SelectTrigger className="h-10 w-full">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -896,26 +1034,33 @@ export function EstimateEditor({ id, onBack }: { id: number; onBack: () => void 
                 </SelectContent>
               </Select>
             </div>
+
+            {/* Percentage — prominent input */}
             <div className="space-y-2">
-              <Label>Postotak (%)</Label>
-              <Input
-                value={adjustPercent}
-                onChange={(e) => setAdjustPercent(e.target.value)}
-                placeholder="npr. 10 za +10%, -5 za -5%"
-                inputMode="decimal"
-                autoFocus
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") handleAdjust();
-                }}
-              />
+              <Label className="text-xs text-muted-foreground uppercase tracking-wider">Postotak</Label>
+              <div className="relative">
+                <Input
+                  value={adjustPercent}
+                  onChange={(e) => setAdjustPercent(e.target.value)}
+                  placeholder="0"
+                  inputMode="decimal"
+                  autoFocus
+                  onFocus={(e) => e.target.select()}
+                  onKeyDown={(e) => { if (e.key === "Enter") handleAdjust(); }}
+                  className="h-12 text-xl font-semibold text-right pr-10 tabular-nums"
+                />
+                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-lg text-muted-foreground font-medium">%</span>
+              </div>
               <p className="text-xs text-muted-foreground">
-                Pozitivan broj povećava, negativan smanjuje
+                npr. <span className="font-medium text-emerald-600">+10</span> povećava, <span className="font-medium text-red-500">-5</span> smanjuje
               </p>
             </div>
-            <div className="flex justify-end gap-2">
-              <Button variant="outline" onClick={() => setShowAdjust(false)}>Odustani</Button>
-              <Button onClick={handleAdjust}>Primijeni</Button>
-            </div>
+          </div>
+
+          {/* Footer */}
+          <div className="flex items-center justify-end gap-2 px-6 py-4 border-t border-border bg-muted/30">
+            <Button variant="ghost" size="sm" onClick={() => setShowAdjust(false)}>Odustani</Button>
+            <Button size="sm" onClick={handleAdjust}>Primijeni korekciju</Button>
           </div>
         </DialogContent>
       </Dialog>

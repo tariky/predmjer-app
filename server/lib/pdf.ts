@@ -10,6 +10,9 @@ type EstimateData = {
     location: string;
     notes: string;
     created_at: string;
+    pdv_enabled: number;
+    discount_type: "none" | "amount" | "percentage";
+    discount_value: number;
   };
   company: {
     name: string;
@@ -217,12 +220,37 @@ export function generatePDF(data: EstimateData): ArrayBuffer {
   ]);
 
   const grandTotal = groupTotals.reduce((sum, g) => sum + g.total, 0);
+  const { discount_type, discount_value, pdv_enabled } = data.estimate;
+  const discountAmount = discount_type === "percentage"
+    ? grandTotal * discount_value / 100
+    : discount_type === "amount" ? discount_value : 0;
+  const afterDiscount = grandTotal - discountAmount;
+  const pdvAmount = pdv_enabled ? afterDiscount * 0.17 : 0;
+  const finalTotal = afterDiscount + pdvAmount;
+
+  const footRows: string[][] = [];
+  if (discountAmount > 0 || pdv_enabled) {
+    footRows.push(["", "Ukupno bez popusta:", fmt(grandTotal)]);
+  }
+  if (discountAmount > 0) {
+    const discLabel = discount_type === "percentage"
+      ? `Popust (${discount_value}%):`
+      : "Popust:";
+    footRows.push(["", discLabel, `-${fmt(discountAmount)}`]);
+  }
+  if (discountAmount > 0 && pdv_enabled) {
+    footRows.push(["", "Ukupno sa popustom:", fmt(afterDiscount)]);
+  }
+  if (pdv_enabled) {
+    footRows.push(["", "PDV (17%):", fmt(pdvAmount)]);
+  }
+  footRows.push(["", "UKUPNO:", fmt(finalTotal)]);
 
   autoTable(doc, {
     startY: yPos,
     head: [["R.br.", "Grupa radova", "Iznos (KM)"]],
     body: recapData,
-    foot: [["", "UKUPNO:", fmt(grandTotal)]],
+    foot: footRows,
     margin: { left: margin, right: margin },
     theme: "plain",
     styles: {

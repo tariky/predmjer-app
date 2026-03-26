@@ -84,7 +84,7 @@ export function createEstimateRoutes(db: Database) {
         const updates: string[] = [];
         const values: any[] = [];
 
-        for (const key of ["name", "client_name", "location", "notes"]) {
+        for (const key of ["name", "client_name", "location", "notes", "pdv_enabled", "discount_type", "discount_value"]) {
           if (body[key] !== undefined) {
             updates.push(`${key} = ?`);
             values.push(body[key]);

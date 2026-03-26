@@ -7,6 +7,9 @@ type EstimateData = {
     location: string;
     notes: string;
     created_at: string;
+    pdv_enabled: number;
+    discount_type: "none" | "amount" | "percentage";
+    discount_value: number;
   };
   company: {
     name: string;
@@ -73,7 +76,7 @@ export async function generateExcel(data: EstimateData): Promise<Buffer> {
   sheet.addRow([]);
 
   let itemCounter = 0;
-  const groupSubtotalRows: { row: number; name: string }[] = [];
+  const groupSubtotalRows: { row: number; name: string; total: number }[] = [];
 
   for (const group of data.groups) {
     // Group header
@@ -87,8 +90,11 @@ export async function generateExcel(data: EstimateData): Promise<Buffer> {
     headerRow.font = { bold: true, size: 9 };
     headerRow.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFE0E0E0" } };
 
+    let groupTotal = 0;
     for (const item of group.items) {
       itemCounter++;
+      const total = item.quantity * item.unit_price;
+      groupTotal += total;
       const currentRowNum = sheet.rowCount + 1;
       const row = sheet.addRow([
         itemCounter,
@@ -97,7 +103,7 @@ export async function generateExcel(data: EstimateData): Promise<Buffer> {
         item.unit,
         item.quantity,
         item.unit_price,
-        { formula: `E${currentRowNum}*F${currentRowNum}` },
+        { formula: `E${currentRowNum}*F${currentRowNum}`, result: total },
       ]);
       row.getCell(5).numFmt = "#,##0.00";
       row.getCell(6).numFmt = "#,##0.00";
@@ -108,10 +114,10 @@ export async function generateExcel(data: EstimateData): Promise<Buffer> {
     const lastItemRow = sheet.rowCount;
 
     // Subtotal row
-    const subtotalRow = sheet.addRow(["", "", "", "", "", "UKUPNO:", { formula: `SUM(G${firstItemRow}:G${lastItemRow})` }]);
+    const subtotalRow = sheet.addRow(["", "", "", "", "", "UKUPNO:", { formula: `SUM(G${firstItemRow}:G${lastItemRow})`, result: groupTotal }]);
     subtotalRow.font = { bold: true };
     subtotalRow.getCell(7).numFmt = "#,##0.00";
-    groupSubtotalRows.push({ row: sheet.rowCount, name: group.group_name });
+    groupSubtotalRows.push({ row: sheet.rowCount, name: group.group_name, total: groupTotal });
 
     sheet.addRow([]);
   }
@@ -127,19 +133,74 @@ export async function generateExcel(data: EstimateData): Promise<Buffer> {
   recapHeader.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFE0E0E0" } };
 
   const recapStartRow = sheet.rowCount + 1;
+  const grandTotalVal = groupSubtotalRows.reduce((s, g) => s + g.total, 0);
 
   groupSubtotalRows.forEach((g, i) => {
-    const row = sheet.addRow([i + 1, g.name, "", "", "", "", { formula: `G${g.row}` }]);
+    const row = sheet.addRow([i + 1, g.name, "", "", "", "", { formula: `G${g.row}`, result: g.total }]);
     row.getCell(7).numFmt = "#,##0.00";
     sheet.mergeCells(row.number, 2, row.number, 6);
   });
 
   const recapEndRow = sheet.rowCount;
 
-  const grandTotalRow = sheet.addRow(["", "UKUPNO:", "", "", "", "", { formula: `SUM(G${recapStartRow}:G${recapEndRow})` }]);
-  grandTotalRow.font = { bold: true, size: 12 };
-  grandTotalRow.getCell(7).numFmt = "#,##0.00";
-  sheet.mergeCells(grandTotalRow.number, 2, grandTotalRow.number, 6);
+  const subtotalRef = `SUM(G${recapStartRow}:G${recapEndRow})`;
+  const { discount_type, discount_value, pdv_enabled } = data.estimate;
+  const hasDiscount = discount_type !== "none" && discount_value > 0;
+  const discountAmountVal = discount_type === "percentage"
+    ? grandTotalVal * discount_value / 100
+    : discount_type === "amount" ? discount_value : 0;
+  const afterDiscountVal = grandTotalVal - discountAmountVal;
+  const pdvAmountVal = pdv_enabled ? afterDiscountVal * 0.17 : 0;
+  const finalTotalVal = afterDiscountVal + pdvAmountVal;
+
+  if (hasDiscount || pdv_enabled) {
+    const subtotalRow = sheet.addRow(["", "Ukupno bez popusta:", "", "", "", "", { formula: subtotalRef, result: grandTotalVal }]);
+    subtotalRow.font = { bold: true };
+    subtotalRow.getCell(7).numFmt = "#,##0.00";
+    sheet.mergeCells(subtotalRow.number, 2, subtotalRow.number, 6);
+    const subtotalCellRef = `G${subtotalRow.number}`;
+
+    let afterDiscountRef = subtotalCellRef;
+
+    if (hasDiscount) {
+      const discLabel = discount_type === "percentage" ? `Popust (${discount_value}%):` : "Popust:";
+      const discFormula = discount_type === "percentage"
+        ? `${subtotalCellRef}*${discount_value}/100`
+        : `${discount_value}`;
+      const discRow = sheet.addRow(["", discLabel, "", "", "", "", { formula: `-${discFormula}`, result: -discountAmountVal }]);
+      discRow.font = { color: { argb: "FFCC0000" } };
+      discRow.getCell(7).numFmt = "#,##0.00";
+      sheet.mergeCells(discRow.number, 2, discRow.number, 6);
+
+      const afterDiscRow = sheet.addRow(["", "Ukupno sa popustom:", "", "", "", "", { formula: `${subtotalCellRef}+G${discRow.number}`, result: afterDiscountVal }]);
+      afterDiscRow.font = { bold: true };
+      afterDiscRow.getCell(7).numFmt = "#,##0.00";
+      sheet.mergeCells(afterDiscRow.number, 2, afterDiscRow.number, 6);
+      afterDiscountRef = `G${afterDiscRow.number}`;
+    }
+
+    if (pdv_enabled) {
+      const pdvRow = sheet.addRow(["", "PDV (17%):", "", "", "", "", { formula: `${afterDiscountRef}*0.17`, result: pdvAmountVal }]);
+      pdvRow.font = { bold: false };
+      pdvRow.getCell(7).numFmt = "#,##0.00";
+      sheet.mergeCells(pdvRow.number, 2, pdvRow.number, 6);
+
+      const grandTotalRow = sheet.addRow(["", "UKUPNO:", "", "", "", "", { formula: `${afterDiscountRef}+G${pdvRow.number}`, result: finalTotalVal }]);
+      grandTotalRow.font = { bold: true, size: 12 };
+      grandTotalRow.getCell(7).numFmt = "#,##0.00";
+      sheet.mergeCells(grandTotalRow.number, 2, grandTotalRow.number, 6);
+    } else {
+      const grandTotalRow = sheet.addRow(["", "UKUPNO:", "", "", "", "", { formula: `${afterDiscountRef}`, result: afterDiscountVal }]);
+      grandTotalRow.font = { bold: true, size: 12 };
+      grandTotalRow.getCell(7).numFmt = "#,##0.00";
+      sheet.mergeCells(grandTotalRow.number, 2, grandTotalRow.number, 6);
+    }
+  } else {
+    const grandTotalRow = sheet.addRow(["", "UKUPNO:", "", "", "", "", { formula: subtotalRef, result: grandTotalVal }]);
+    grandTotalRow.font = { bold: true, size: 12 };
+    grandTotalRow.getCell(7).numFmt = "#,##0.00";
+    sheet.mergeCells(grandTotalRow.number, 2, grandTotalRow.number, 6);
+  }
 
   // Notes
   if (data.estimate.notes) {

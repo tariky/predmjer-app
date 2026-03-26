@@ -63,6 +63,7 @@ function DecimalCell({
         if (final !== value) onSave(final);
       }}
       onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
+      onFocus={(e) => e.target.select()}
       inputMode="decimal"
     />
   );
